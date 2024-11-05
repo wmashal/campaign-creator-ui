@@ -27,7 +27,7 @@ import axios from 'axios';
 
 const steps = ['Create Transcript', 'Generate Video', 'Upload to YouTube'];
 
-
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 const RepromptDialog = ({ open, onClose, onReprompt, currentPrompt, loading }) => {
     const [newPrompt, setNewPrompt] = useState(currentPrompt);
@@ -127,21 +127,13 @@ const CampaignCreator = () => {
     exploreMode: false
   });
   
-  
   const checkVideoStatus = useCallback(async () => {
     try {
       const response = await axios.get(
-        `http://localhost:5000/api/video-status/${videoGeneration.jobId}`,
+        `${API_URL}/api/video-status/${videoGeneration.jobId}`,
         {
           params: {
-            agent: selectedAgent  // Add the agent type to the query
-          },
-          headers: {
-            'Authorization': `Bearer ${
-              selectedAgent === 'runway' 
-                ? process.env.REACT_APP_RUNWAY_API_KEY 
-                : process.env.REACT_APP_PIKA_API_KEY
-            }`
+            agent: selectedAgent  // 'pika' or 'runway'
           }
         }
       );
@@ -154,7 +146,7 @@ const CampaignCreator = () => {
         status: statusData.status,
         progress: statusData.progress || 0,
         videoUrl: statusData.video_url,
-        metadata: statusData.video_metadata // Additional metadata from Runway
+        metadata: statusData.metadata
       }));
   
       if (statusData.status === 'completed') {
@@ -163,7 +155,7 @@ const CampaignCreator = () => {
           status: 'completed',
           progress: 100,
           videoUrl: statusData.video_url,
-          metadata: statusData.video_metadata
+          metadata: statusData.metadata
         }));
       } else if (statusData.status === 'failed') {
         setError(statusData.message || 'Video generation failed');
@@ -173,7 +165,7 @@ const CampaignCreator = () => {
       setError('Failed to check video status');
     }
   }, [videoGeneration.jobId, selectedAgent]);
-  
+
   useEffect(() => {
     let pollInterval;
     
@@ -260,8 +252,8 @@ const CampaignCreator = () => {
     setError('');
     try {
       const endpoint = selectedAgent === 'pika' 
-        ? 'http://localhost:5000/api/generate-video'
-        : 'http://localhost:5000/api/runway/generate-video';
+        ? '/api/generate-video'
+        : '/api/runway/generate-video';
   
       const payload = selectedAgent === 'pika'
         ? {
@@ -270,22 +262,18 @@ const CampaignCreator = () => {
           }
         : {
             ...runwayOptions,
-            text_prompt: runwayOptions.text_prompt || campaignData.transcript
+            text_prompt: campaignData.transcript
           };
   
-      const response = await axios.post(
-        endpoint,
-        payload,
-        {
-          headers: {
-            'Authorization': `Bearer ${process.env.REACT_APP_PIKA_API_KEY}`
-          }
-        }
-      );
+      console.log('Generating video with payload:', payload);
   
-      if (response.data.job_id || response.data.taskId) {
+      const response = await axios.post(endpoint, payload);
+  
+      console.log('Generation response:', response.data);
+  
+      if (response.data.job_id) {
         setVideoGeneration({
-          jobId: response.data.job_id || response.data.taskId,
+          jobId: response.data.job_id,
           status: 'pending',
           progress: 0
         });
@@ -294,109 +282,154 @@ const CampaignCreator = () => {
         setError('Failed to start video generation');
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to generate video. Please try again.');
+      console.error('Generation error:', err);
+      setError(err.response?.data?.message || 'Failed to generate video');
     }
     setLoading(false);
   };
 
- const renderVideoGenerationStep = () => (
-  <Box sx={{ mt: 2 }}>
-    <AgentSelector 
-      selectedAgent={selectedAgent} 
-      onAgentChange={setSelectedAgent} 
-    />
-
-    {selectedAgent === 'pika' ? (
-      <VideoGenerationSettings
-        options={videoOptions}
-        setOptions={setVideoOptions}
+  const renderVideoGenerationStep = () => (
+    <Box sx={{ mt: 2 }}>
+      <AgentSelector 
+        selectedAgent={selectedAgent} 
+        onAgentChange={setSelectedAgent} 
       />
-    ) : (
-      <RunwayGenerationSettings
-        options={runwayOptions}
-        setOptions={setRunwayOptions}
-      />
-    )}
-
-    {videoGeneration.jobId && videoGeneration.status !== 'completed' && (
-      <Card variant="outlined" sx={{ mt: 3 }}>
-        <CardContent>
-          <Typography variant="subtitle1" gutterBottom>
-            Generating Video
-          </Typography>
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              Status: {videoGeneration.status}
-              {videoGeneration.progress > 0 && ` - ${videoGeneration.progress}%`}
+  
+      {selectedAgent === 'pika' ? (
+        <VideoGenerationSettings
+          options={videoOptions}
+          setOptions={setVideoOptions}
+        />
+      ) : (
+        <RunwayGenerationSettings
+          options={runwayOptions}
+          setOptions={setRunwayOptions}
+        />
+      )}
+  
+      {videoGeneration.jobId && videoGeneration.status !== 'completed' && (
+        <Card variant="outlined" sx={{ mt: 3 }}>
+          <CardContent>
+            <Typography variant="subtitle1" gutterBottom>
+              Generating Video
             </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Status updates every 30 seconds
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Status: {videoGeneration.status}
+                {videoGeneration.progress > 0 && ` - ${videoGeneration.progress}%`}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Status updates every 30 seconds
+              </Typography>
+            </Box>
+            <LinearProgress 
+              variant={videoGeneration.progress > 0 ? "determinate" : "indeterminate"}
+              value={videoGeneration.progress} 
+              sx={{ mb: 2 }}
+            />
+            <StatusTimer nextCheck={30} />
+          </CardContent>
+        </Card>
+      )}
+  
+      {videoGeneration.videoUrl && (
+        <Card variant="outlined" sx={{ mt: 3 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Generated Video
             </Typography>
-          </Box>
-          <LinearProgress 
-            variant={videoGeneration.progress > 0 ? "determinate" : "indeterminate"}
-            value={videoGeneration.progress} 
-            sx={{ mb: 2 }}
-          />
-          {/* Add a timer to show time until next check */}
-          <StatusTimer nextCheck={30} />
-        </CardContent>
-      </Card>
-    )}
-
-{videoGeneration.videoUrl && (
-  <Card variant="outlined" sx={{ mt: 3 }}>
-    <CardContent>
-      <Typography variant="h6" gutterBottom>
-        Generated Video
-      </Typography>
-      <video
-        controls
-        src={videoGeneration.videoUrl}
-        style={{ width: '100%', maxHeight: '400px' }}
-      >
-        Your browser does not support the video tag.
-      </video>
-      <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
-        <Button
-          variant="contained"
-          onClick={() => setActiveStep(2)}
-          disabled={loading}
-        >
-          Continue to Upload
-        </Button>
-        <Button
-          variant="outlined"
-          onClick={() => setRepromptDialogOpen(true)}  // Changed this line
-          disabled={loading}
-        >
-          Edit & Regenerate
-        </Button>
-      </Box>
-    </CardContent>
-  </Card>
-)}
-
-    {!videoGeneration.jobId && (
-      <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
-        <Button
-          variant="contained"
-          onClick={generateVideo}
-          disabled={loading}
-        >
-          Generate Video
-        </Button>
-        <Button
-          variant="outlined"
-          onClick={() => setActiveStep(0)}
-          disabled={loading}
-        >
-          Back to Transcript
-        </Button>
-      </Box>
-    )}
-  </Box>
-);
+            
+            {/* Video Metadata */}
+            {videoGeneration.metadata && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="caption" color="text.secondary" display="block">
+                  Dimensions: {videoGeneration.metadata.dimensions?.[0]}x{videoGeneration.metadata.dimensions?.[1]}
+                </Typography>
+                {videoGeneration.metadata.frame_rate && (
+                  <Typography variant="caption" color="text.secondary" display="block">
+                    Frame Rate: {videoGeneration.metadata.frame_rate} fps
+                  </Typography>
+                )}
+                {videoGeneration.metadata.duration && (
+                  <Typography variant="caption" color="text.secondary" display="block">
+                    Duration: {videoGeneration.metadata.duration.toFixed(1)}s
+                  </Typography>
+                )}
+              </Box>
+            )}
+  
+            {/* Video Player */}
+            <video
+              controls
+              src={videoGeneration.videoUrl}
+              style={{ width: '100%', maxHeight: '400px' }}
+            >
+              Your browser does not support the video tag.
+            </video>
+  
+            {/* Action Buttons */}
+            <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+              <Button
+                variant="contained"
+                onClick={() => setActiveStep(2)}
+                disabled={loading}
+              >
+                Continue to Upload
+              </Button>
+              
+              {selectedAgent === 'pika' ? (
+                // Pika's Edit & Regenerate
+                <Button
+                  variant="outlined"
+                  onClick={() => setRepromptDialogOpen(true)}
+                  disabled={loading}
+                >
+                  Edit & Regenerate
+                </Button>
+              ) : (
+                // Runway's Regenerate
+                <Button
+                  variant="outlined"
+                  onClick={generateVideo}
+                  disabled={loading}
+                >
+                  Regenerate Video
+                </Button>
+              )}
+  
+              {/* Back Button */}
+              <Button
+                variant="outlined"
+                onClick={() => setActiveStep(0)}
+                disabled={loading}
+              >
+                Back to Transcript
+              </Button>
+            </Box>
+          </CardContent>
+        </Card>
+      )}
+  
+      {!videoGeneration.jobId && !videoGeneration.videoUrl && (
+        <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+          <Button
+            variant="contained"
+            onClick={generateVideo}
+            disabled={loading}
+          >
+            Generate Video
+          </Button>
+          <Button
+            variant="outlined"
+            onClick={() => setActiveStep(0)}
+            disabled={loading}
+          >
+            Back to Transcript
+          </Button>
+        </Box>
+      )}
+    </Box>
+  );
 
   const renderTranscriptStep = () => (
     <Box sx={{ mt: 2 }}>

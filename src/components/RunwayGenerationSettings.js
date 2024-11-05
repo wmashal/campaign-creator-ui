@@ -13,7 +13,9 @@ import {
   FormControlLabel,
   Grid,  // Changed from Grid2 to Grid
   Divider,
+  Box
 } from '@mui/material';
+import ImageAssetSelector from './ImageAssetSelector';
 
 const RunwayGenerationSettings = ({ options, setOptions }) => {
   const handleOptionChange = (field, value) => {
@@ -29,7 +31,32 @@ const RunwayGenerationSettings = ({ options, setOptions }) => {
         <Typography variant="h6" gutterBottom>
           Runway Video Settings
         </Typography>
+        <Grid item xs={12} md={6}>
+        <Box>
+            <Typography variant="subtitle2" gutterBottom>
+            First Frame Image
+            </Typography>
+            <ImageAssetSelector
+            onSelect={(assetId) => handleOptionChange('firstImage_assetId', assetId)}
+            selectedAssetId={options.firstImage_assetId}
+            label="First Frame"
+            />
+        </Box>
+        </Grid>
 
+        <Grid item xs={12} md={6}>
+        <Box>
+            <Typography variant="subtitle2" gutterBottom>
+            Last Frame Image
+            </Typography>
+            <ImageAssetSelector
+            onSelect={(assetId) => handleOptionChange('lastImage_assetId', assetId)}
+            selectedAssetId={options.lastImage_assetId}
+            label="Last Frame"
+            />
+        </Box>
+        <Divider sx={{ my: 2 }} />
+        </Grid>
         <Grid container spacing={3}>  {/* Changed from Grid2 to Grid container */}
           {/* Aspect Ratio */}
           <Grid item xs={12} md={6}>  {/* Added item prop */}
